@@ -1,0 +1,1575 @@
+---
+title: "📚 Diplômes & Marché du Travail en Suisse"
+subtitle: "Montée du tertiaire et pénuries de main-d’œuvre qualifiée — données OFS et SECO"
+author: "Eduardo Gonzalez"
+date: "`r format(Sys.Date(), '%d %B %Y')`"
+output:
+  html_document:
+    code_folding: hide
+    theme: flatly
+    highlight: tango
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+    toc_depth: 3
+    number_sections: false
+    fig_caption: true
+---
+
+<style>
+body { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 15px; line-height: 1.75; color: #2c3e50; }
+h1.title { font-size: 2.4em; color: #c0392b; }
+h3.subtitle { color: #7f8c8d; font-weight: 300; }
+h1 { color: #c0392b; border-bottom: 3px solid #ecf0f1; padding-bottom: 6px; margin-top: 2em; }
+h2 { color: #2c3e50; margin-top: 1.8em; }
+h3 { color: #555; font-size: 1.1em; }
+.section-banner { background: linear-gradient(135deg,#2c3e50,#34495e); color:white; padding:22px 32px; border-radius:10px; margin:36px 0 20px; border-left:6px solid #c0392b; }
+.section-banner .section-num { font-size:.8em; letter-spacing:3px; text-transform:uppercase; color:#e74c3c; }
+.section-banner .section-title { font-size:1.6em; font-weight:700; margin:4px 0 6px; }
+.section-banner .section-sub { font-size:.95em; color:#bdc3c7; }
+.insight { background:#fdfefe; border-left:4px solid #c0392b; padding:14px 20px; margin:18px 0; border-radius:0 6px 6px 0; box-shadow:0 1px 4px rgba(0,0,0,.06); font-size:.94em; }
+.insight strong { color:#c0392b; }
+.transition { background:#f8f9fa; border-left:4px solid #2980b9; padding:14px 20px; margin:22px 0; border-radius:0 6px 6px 0; font-size:.95em; }
+.method-note { background:#fffaf0; border-left:4px solid #f39c12; padding:14px 20px; margin:18px 0; border-radius:0 6px 6px 0; font-size:.92em; color:#4d3b20; }
+.method-note strong { color:#d35400; }
+blockquote { border-left:4px solid #e74c3c; background:#fff5f5; padding:12px 20px; margin:20px 0; border-radius:0 6px 6px 0; font-style:italic; color:#555; }
+.source { font-size:.78em; color:#95a5a6; text-align:right; margin-top:4px; }
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE, warning = FALSE, message = FALSE,
+  fig.align = "center", fig.width = 11, fig.height = 6, dpi = 150
+)
+```
+
+```{r packages}
+# Paquets réellement utilisés dans ce rapport.
+suppressPackageStartupMessages({
+  library(tidyverse)       # ggplot2, dplyr, tidyr, readr, stringr, forcats, tibble, purrr
+  library(readxl)          # lecture des fichiers Excel OFS
+  library(scales)          # formatage des axes
+  library(fmsb)            # radar chart
+  library(sf)              # géométries cantonales
+  library(svglite)         # export SVG temporaire pour la carte interactive
+  library(xml2)            # injection des attributs de tooltip dans le SVG
+  library(jsonlite)        # passage des années vers JavaScript
+  library(htmltools)   # rendu HTML interactif dans le document
+  library(ggrepel)
+})
+```
+
+
+```{r theme}
+# ── Palette et thème communs ─────────────────────────────────────────────────
+# Changer uniquement cette ligne pour passer d'une palette à l'autre :
+# - "daltonien" : palette compatible daltonisme, recommandée pour le rendu final
+# - "ancienne"  : couleurs utilisées dans la version précédente du projet
+palette_mode <- "daltonien"
+palette_mode <- match.arg(palette_mode, c("daltonien", "ancienne"))
+
+if (palette_mode == "daltonien") {
+  # Palette compatible daltonisme : base Okabe-Ito pour les catégories,
+  # avec une rampe viridis pour les cartes / variables continues.
+  COL_TEXT       <- "#2B2B2B"
+  COL_TEXT_LIGHT <- "#666666"
+  COL_GRID       <- "#E8E8E8"
+  COL_GREY       <- "#999999"
+  COL_BLUE       <- "#0072B2"
+  COL_SKY        <- "#56B4E9"
+  COL_GREEN      <- "#009E73"
+  COL_ORANGE     <- "#E69F00"
+  COL_VERMILLION <- "#D55E00"
+  COL_PURPLE     <- "#CC79A7"
+  PAL_CARTE_BASE <- c("#440154", "#31688E", "#35B779", "#FDE725")
+} else {
+  # Palette de l'ancienne version du projet.
+  # Le thème reste minimal, seules les couleurs des graphes reviennent à l'ancien style.
+  COL_TEXT       <- "#2c3e50"
+  COL_TEXT_LIGHT <- "#7f8c8d"
+  COL_GRID       <- "#ecf0f1"
+  COL_GREY       <- "#555555"
+  COL_BLUE       <- "#2980b9"
+  COL_SKY        <- "#3498db"
+  COL_GREEN      <- "#27ae60"
+  COL_ORANGE     <- "#e67e22"
+  COL_VERMILLION <- "#c0392b"
+  COL_PURPLE     <- "#f1c40f"
+  PAL_CARTE_BASE <- c("#f7fbff", "#c6dbef", "#6baed6", "#2171b5", "#08306b")
+}
+
+rouge  <- COL_VERMILLION
+bleu   <- COL_BLUE
+# Couleurs pour la partie pénurie de main-d'œuvre
+COL_MED  <- COL_ORANGE
+COL_HIGH <- if (palette_mode == "daltonien") COL_VERMILLION else "#e74c3c"
+COL_REF  <- COL_TEXT
+COL_HES  <- if (palette_mode == "daltonien") COL_VERMILLION else "#e74c3c"
+
+# Palettes réutilisées dans les graphes
+pal_reg_ts <- c(
+  "Total Suisse"       = COL_GREY,
+  "Suisse alémanique"  = COL_BLUE,
+  "Suisse romande"     = COL_VERMILLION,
+  "Suisse italienne"   = COL_GREEN
+)
+
+pal_niv <- if (palette_mode == "daltonien") {
+  c(
+    "École obligatoire"                                      = COL_VERMILLION,
+    "Degré secondaire II (formation professionnelle)"        = COL_ORANGE,
+    "Degré secondaire II (formation générale)"               = COL_PURPLE,
+    "Degré tertiaire (formation professionnelle supérieure)" = COL_GREEN,
+    "Degré tertiaire (hautes écoles)"                        = COL_BLUE
+  )
+} else {
+  c(
+    "École obligatoire"                                      = "#c0392b",
+    "Degré secondaire II (formation professionnelle)"        = "#e67e22",
+    "Degré secondaire II (formation générale)"               = "#f1c40f",
+    "Degré tertiaire (formation professionnelle supérieure)" = "#2980b9",
+    "Degré tertiaire (hautes écoles)"                        = "#1a5276"
+  )
+}
+
+pal_bourses <- c(
+  "Étudiants sans bourse"        = bleu,
+  "Bénéficiaires d'une bourse"   = rouge
+)
+
+pal_penurie <- c(
+  "Forte (≥ 6.5)"           = COL_HIGH,
+  "Supérieure à la moyenne" = COL_MED,
+  "Inférieure à la moyenne" = COL_GREEN,
+  "Faible (< 4.0)"          = if (palette_mode == "daltonien") COL_GREY else "#1a9850"
+)
+
+pal_radar <- if (palette_mode == "daltonien") {
+  c(COL_VERMILLION, COL_ORANGE, COL_BLUE, COL_PURPLE, COL_GREEN, COL_GREY)
+} else {
+  c("#e74c3c", "#e67e22", "#3498db", "#9b59b6", "#1abc9c", "#95a5a6")
+}
+
+pal_scen <- c(
+  # ── Palette scénarios : daltonisme + loi de familiarité (Gestalt) ─────────────
+  # Principe : l'œil associe naturellement "plus sombre/chaud = plus élevé" et
+  # "plus clair/froid = plus faible". La couleur centrale (Référence) est un bleu
+  # solide neutre — couleur de confiance dans les rapports statistiques (OFS/OCDE).
+  # "Bas" : bleu ciel, plus léger → connoté faible, en dessous de la référence.
+  # "Haut" : orange, chaud et contrasté → connoté fort, au-dessus de la référence.
+  # La triade bleu foncé / bleu ciel / orange est 100 % distinguable pour les trois
+  # principales formes de daltonisme (deutéranopie, protanopie, tritanopie).
+  # Inspiré de la palette Okabe-Ito (standard en visualisation scientifique).
+  "Bas"       = "#56B4E9",   # bleu ciel  — Okabe-Ito sky blue
+  "Référence" = "#0072B2",   # bleu foncé — Okabe-Ito blue (référence solide)
+  "Haut"      = "#E69F00"    # orange     — Okabe-Ito orange (valeur haute/chaude)
+)
+
+theme_p <- function(base = 12) {
+  theme_minimal(base_size = base) +
+    theme(
+      plot.title    = element_text(face = "bold", size = base + 3, color = COL_TEXT,
+                                   margin = margin(b = 4)),
+      plot.subtitle = element_text(color = COL_TEXT_LIGHT, size = base - 1,
+                                   margin = margin(b = 10)),
+      plot.caption  = element_text(color = COL_TEXT_LIGHT, size = base - 3,
+                                   hjust = 0, margin = margin(t = 8)),
+      axis.title    = element_text(color = COL_TEXT_LIGHT, size = base - 1),
+      axis.text     = element_text(color = COL_TEXT),
+      axis.ticks    = element_blank(),
+      panel.grid.minor   = element_blank(),
+      panel.grid.major.x = element_blank(),
+      panel.grid.major.y = element_line(color = COL_GRID, linewidth = 0.25),
+      plot.background    = element_rect(fill = "white", color = NA),
+      panel.background   = element_rect(fill = "white", color = NA),
+      legend.position    = "bottom",
+      legend.title       = element_text(color = COL_TEXT, face = "bold"),
+      legend.text        = element_text(color = COL_TEXT),
+      legend.key         = element_blank(),
+      strip.text         = element_text(face = "bold", color = COL_TEXT)
+    )
+}
+```
+
+```{r chemins}
+# ── Chemins des fichiers ─────────────────────────────────────────────────────
+# Placez les fichiers soit dans un dossier data/, soit à côté du fichier .Rmd.
+# data_file() renvoie le premier chemin existant et, à défaut, le chemin data/.
+data_file <- function(...) {
+  fichier <- file.path(...)
+  chemins_possibles <- c(file.path("data", fichier), fichier)
+  existants <- chemins_possibles[file.exists(chemins_possibles)]
+  if (length(existants) > 0) return(existants[[1]])
+  chemins_possibles[[1]]
+}
+
+locale_latin1 <- locale(encoding = "latin1")
+locale_utf8   <- locale(encoding = "UTF-8")
+
+f_penurie <- data_file("seco_indice_penurie_qualifiee_2023.csv")
+f_hist    <- data_file("Bourses_1971-2003__montant__montant_par_habitant__be_ne_ficiaires_et_subvention_fe_de_rale.csv")
+f_main    <- data_file("Montant_et_be_ne_ficiaires_selon_le_type_de_contribution_a__la_formation__le_canton_et_le_degre__de_formation.csv")
+f_scen    <- data_file("Sce_narios_pour_le_niveau_de_formation_de_la_population_2025-2055_-_population_re_sidante_permanente_de_25_a__64_ans_selon_le_sce_nario__le_niveau_de_formation_et_le_sexe.csv")
+f_niv_age <- data_file("Niveau_de_formation_de_la_population_re_sidante_selon_l_a_ge_et_le_sexe.xlsx")
+f_niv_reg <- data_file("Niveau_de_formation_de_la_population_re_sidente_dans_la_re_gion_linguistique.xlsx")
+f_form_canton <- data_file("formation_tertiaire.csv")
+
+# Étudiants des hautes écoles — comparaison avec les bourses
+f_etu_heu <- data_file(
+  "Etudiants des hautes écoles universitaires selon l'année, la haute école, le groupe de domaines d'études, le niveau d'études et le sexe.csv"
+)
+f_etu_hes <- data_file(
+  "Etudiants des hautes écoles spécialisées et pédagogiques selon l'année, la haute école, le domaine d'études, le niveau d'études et le sexe.csv"
+)
+
+inadequation_TA3 <- data_file("inadequation_TA3.csv")
+
+```
+
+
+```{r donnees-carte-tertiaire, include=FALSE}
+# ═══════════════════════════════════════════════════════════════════════
+# DONNÉES CARTE — FORMATION TERTIAIRE PAR CANTON
+# ═══════════════════════════════════════════════════════════════════════
+
+# Fichier attendu : canton, annee, pct_tertiaire.
+df_formation_canton <- read_csv(
+  f_form_canton,
+  col_types = cols(
+    canton = col_character(),
+    annee = col_integer(),
+    pct_tertiaire = col_double()
+  )
+)
+
+annees_dispo_carte <- sort(unique(df_formation_canton$annee))
+
+canton_meta <- tibble(
+  abbr   = c("ZH","BE","LU","UR","SZ","OW","NW","GL","ZG","FR",
+             "SO","BS","BL","SH","AR","AI","SG","GR","AG","TG",
+             "TI","VD","VS","NE","GE","JU"),
+  nom_fr = c("Zurich","Berne","Lucerne","Uri","Schwytz","Obwald",
+             "Nidwald","Glaris","Zoug","Fribourg","Soleure",
+             "Bâle-Ville","Bâle-Campagne","Schaffhouse",
+             "App. Rh.-Ext.","App. Rh.-Int.","Saint-Gall",
+             "Grisons","Argovie","Thurgovie","Tessin","Vaud",
+             "Valais","Neuchâtel","Genève","Jura")
+)
+```
+
+```{r geodata-carte-tertiaire, include=FALSE}
+# Récupération du fond cantonal : swissMaps si disponible, sinon rnaturalearth,
+# sinon fallback vers un GeoJSON public.
+get_cantons_sf_tertiaire <- function() {
+  if (requireNamespace("swissMaps", quietly = TRUE)) {
+    ct <- swissMaps::swiss_cantons() |> st_as_sf() |> rename_with(tolower)
+    abbr_col <- intersect(c("abbr", "postal", "id", "kan_kuerzel"), names(ct))[1]
+    return(ct |> mutate(canton = toupper(.data[[abbr_col]])))
+  }
+  if (requireNamespace("rnaturalearth", quietly = TRUE)) {
+    ct <- rnaturalearth::ne_states(country = "Switzerland", returnclass = "sf") |>
+      mutate(canton = toupper(postal))
+    return(ct |> select(canton, geometry))
+  }
+
+  url <- paste0(
+    "https://raw.githubusercontent.com/interactivethings/",
+    "swiss-maps/master/topo/ch-cantons.json"
+  )
+  tmp <- tempfile(fileext = ".json")
+  download.file(url, tmp, quiet = TRUE)
+  ct <- sf::read_sf(tmp)
+  col_found <- names(ct)[which.max(
+    sapply(names(ct), \(col) sum(toupper(ct[[col]]) %in% canton_meta$abbr, na.rm = TRUE))
+  )]
+  ct |> mutate(canton = toupper(.data[[col_found]]))
+}
+
+cantons_sf_tertiaire <- get_cantons_sf_tertiaire() |>
+  select(canton, geometry) |>
+  filter(canton %in% canton_meta$abbr) |>
+  left_join(canton_meta, by = c("canton" = "abbr")) |>
+  st_transform(2056)
+
+centroides_tertiaire <- cantons_sf_tertiaire |>
+  st_centroid() |>
+  mutate(
+    cx = st_coordinates(geometry)[, 1],
+    cy = st_coordinates(geometry)[, 2]
+  ) |>
+  st_drop_geometry() |>
+  select(canton, cx, cy)
+```
+
+```{r fonctions-carte-tertiaire, include=FALSE}
+# Graphe 1.1 : on conserve volontairement l'ancienne rampe bleue
+# et la règle d'origine pour la couleur des noms de cantons.
+# Les labels deviennent blancs uniquement sur les cantons foncés.
+PAL_CARTE <- c("#f7fbff", "#c6dbef", "#6baed6", "#2171b5", "#08306b")
+P_MIN_CARTE <- floor(min(df_formation_canton$pct_tertiaire, na.rm = TRUE))
+P_MAX_CARTE <- ceiling(max(df_formation_canton$pct_tertiaire, na.rm = TRUE))
+
+theme_carte_tertiaire <- function() {
+  theme_void(base_family = "sans") +
+    theme(
+      plot.title        = element_text(face = "bold", size = 14, hjust = 0.5,
+                                       margin = margin(b = 3)),
+      plot.subtitle     = element_text(size = 9, hjust = 0.5, color = "grey50",
+                                       margin = margin(b = 5)),
+      legend.position   = "bottom",
+      legend.title      = element_text(size = 8, face = "bold"),
+      legend.text       = element_text(size = 7.5),
+      legend.key.width  = unit(3.2, "cm"),
+      legend.key.height = unit(0.30, "cm"),
+      plot.background   = element_rect(fill = "white", color = NA),
+      plot.margin       = margin(6, 6, 2, 6)
+    )
+}
+
+add_canton_tooltips_tertiaire <- function(svg_str, map_data_cast, annee_val) {
+  doc <- read_xml(svg_str)
+
+  g_nodes  <- xml_find_all(doc, ".//g[@clip-path]")
+  geo_tags <- c("path", "polygon", "polyline")
+
+  best_g <- NULL
+  best_n <- 0L
+  for (g in g_nodes) {
+    children <- xml_children(g)
+    n_geo <- sum(xml_name(children) %in% geo_tags)
+    if (n_geo > best_n) {
+      best_n <- n_geo
+      best_g <- g
+    }
+  }
+
+  if (is.null(best_g)) {
+    warning(sprintf("Année %s : aucun groupe clip-path trouvé dans le SVG", annee_val))
+    return(svg_str)
+  }
+
+  children <- xml_children(best_g)
+  canton_nodes <- children[xml_name(children) %in% geo_tags]
+
+  n_expected <- nrow(map_data_cast)
+  n_found <- length(canton_nodes)
+  if (n_found < n_expected) {
+    warning(sprintf(
+      "Année %s : %d éléments canton trouvés, %d attendus",
+      annee_val, n_found, n_expected
+    ))
+    n_expected <- min(n_found, n_expected)
+  }
+
+  for (i in seq_len(n_expected)) {
+    row <- map_data_cast[i, ]
+    pct_txt <- if (is.na(row$pct_tertiaire)) "N/D" else paste0(round(row$pct_tertiaire, 1), "\u00a0%")
+
+    xml_set_attr(canton_nodes[[i]], "class",       "canton-path")
+    xml_set_attr(canton_nodes[[i]], "data-canton", row$canton)
+    xml_set_attr(canton_nodes[[i]], "data-nom",    row$nom_fr)
+    xml_set_attr(canton_nodes[[i]], "data-pct",    pct_txt)
+    xml_set_attr(canton_nodes[[i]], "data-annee",  as.character(annee_val))
+  }
+
+  as.character(doc)
+}
+
+build_svg_string_tertiaire <- function(annee_val) {
+  df_annee <- df_formation_canton |> filter(annee == annee_val)
+
+  map_base <- cantons_sf_tertiaire |>
+    left_join(df_annee, by = "canton") |>
+    left_join(centroides_tertiaire, by = "canton") |>
+    mutate(txt_col = if_else(
+      !is.na(pct_tertiaire) & pct_tertiaire > 35,
+      "white", "#333333"
+    ))
+
+  map_cast <- suppressWarnings(st_cast(map_base, "POLYGON"))
+
+  gg <- ggplot(map_cast) +
+    geom_sf(aes(fill = pct_tertiaire), color = "white", linewidth = 0.4) +
+    geom_text(
+      data = map_base |> st_drop_geometry(),
+      aes(x = cx, y = cy, label = canton, color = txt_col),
+      size = 2.6, fontface = "bold",
+      check_overlap = TRUE, show.legend = FALSE
+    ) +
+    scale_fill_gradientn(
+      colors = PAL_CARTE,
+      na.value = "grey88",
+      limits = c(P_MIN_CARTE, P_MAX_CARTE),
+      name = "Taux de formation tertiaire (%)",
+      labels = \(x) paste0(x, " %"),
+      guide = guide_colorbar(
+        barwidth = 18,
+        barheight = 0.65,
+        title.position = "top",
+        title.hjust = 0.5
+      )
+    ) +
+    scale_color_identity() +
+    labs(
+      title = as.character(annee_val),
+      subtitle = paste0(
+        "Part de la population résidante permanente ",
+        "≥ 25 ans ayant achevé un degré tertiaire"
+      )
+    ) +
+    theme_carte_tertiaire()
+
+  svg_fn <- svgstring(width = 9, height = 5.5, standalone = FALSE)
+  print(gg)
+  dev.off()
+  svg_raw <- as.character(svg_fn())
+
+  add_canton_tooltips_tertiaire(svg_raw, map_cast, annee_val)
+}
+
+svgs_tertiaire <- setNames(
+  lapply(annees_dispo_carte, build_svg_string_tertiaire),
+  as.character(annees_dispo_carte)
+)
+```
+
+```{r donnees-penurie}
+# ═══════════════════════════════════════════════════════════════════════
+# DONNÉES SECO — PÉNURIE DE MAIN-D'ŒUVRE QUALIFIÉE
+# ═══════════════════════════════════════════════════════════════════════
+
+normaliser_profession <- function(x) {
+  x %>%
+    as.character() %>%
+    str_replace_all("[’‘`´]", "'") %>%
+    str_squish() %>%
+    str_to_lower() %>%
+    iconv(from = "UTF-8", to = "ASCII//TRANSLIT")
+}
+
+df_raw <- read_csv(f_penurie, locale = locale_utf8, show_col_types = FALSE) %>%
+  mutate(across(
+    c(indice_global, actifs_occupes_milliers, proportion_femmes_pct,
+      chomage_pct, postes_vacants_pct, immigration_pct, emploi_pct,
+      demographie_pct, qualification_pct),
+    as.numeric
+  )) %>%
+  mutate(profession_norm = normaliser_profession(profession))
+
+ref_indice <- df_raw %>%
+  filter(str_detect(profession_norm, "ensemble.*economie")) %>%
+  summarise(valeur = first(na.omit(indice_global)), .groups = "drop") %>%
+  pull(valeur) %>%
+  as.numeric()
+
+if (length(ref_indice) == 0 || is.na(ref_indice)) {
+  ref_indice <- NA_real_
+}
+
+ref_indice_label <- if (is.na(ref_indice)) {
+  "non disponible"
+} else {
+  scales::number(ref_indice, accuracy = 0.1, decimal.mark = ",")
+}
+
+# Sous-grands groupes uniquement : codes CH-ISCO à 1 ou 2 chiffres,
+# hors référence globale "Ensemble de l'économie".
+df_top <- df_raw %>%
+  filter(
+    !str_detect(profession_norm, "ensemble.*economie"),
+    !is.na(indice_global),
+    nchar(trimws(as.character(code_ch_isco_19))) <= 2
+  ) %>%
+  mutate(
+    categorie = case_when(
+      indice_global >= 6.5 ~ "Forte (≥ 6.5)",
+      indice_global >= 5.0 ~ "Supérieure à la moyenne",
+      indice_global >= 4.0 ~ "Inférieure à la moyenne",
+      TRUE                 ~ "Faible (< 4.0)"
+    ),
+    categorie = factor(categorie, levels = c(
+      "Forte (≥ 6.5)", "Supérieure à la moyenne",
+      "Inférieure à la moyenne", "Faible (< 4.0)"
+    ))
+  ) %>%
+  arrange(indice_global)
+```
+
+
+```{r donnees-bourses}
+# ═══════════════════════════════════════════════════════════════════════
+# DONNÉES BOURSES — COMPARAISON AVEC LES EFFECTIFS ÉTUDIANTS
+# ═══════════════════════════════════════════════════════════════════════
+
+# Série historique 1971-2003 (niveau Suisse)
+bourse_hist <- read_csv(f_hist, locale = locale_latin1) %>%
+  filter(Canton == "Suisse") %>%
+  transmute(
+    annee     = as.integer(Année),
+    benef     = as.numeric(`Nombre de bénéficiaires`),
+    montant   = as.numeric(`Montant versé en frs`)
+  )
+
+# Série récente 2004-2024 (Suisse, bourses, total)
+bourse_rec <- read_csv(f_main, locale = locale_latin1) %>%
+  filter(
+    Canton                              == "Suisse",
+    `Type de contribution à la formation` == "Bourses",
+    `Degré de formation`                  == "Degrés de formation - total"
+  ) %>%
+  transmute(
+    annee   = as.integer(Année),
+    benef   = as.numeric(`Nombre de bénéficiaires`),
+    montant = as.numeric(`Montant versé en fr.`)
+  )
+
+serie_full <- bind_rows(bourse_hist, bourse_rec) %>%
+  arrange(annee) %>%
+  mutate(montant_par_benef = montant / benef)
+
+# Étudiants des hautes écoles : les deux fichiers sont agrégés par année
+# académique, puis rattachés à l'année civile de début de période : 2024/25 -> 2024.
+lecture_etudiants_he <- function(fichier, type_he) {
+  read_csv(fichier, locale = locale_utf8, show_col_types = FALSE) %>%
+    transmute(
+      annee     = as.integer(str_sub(PERIOD, 1, 4)),
+      type_he   = type_he,
+      etudiants = as.numeric(VALUE)
+    ) %>%
+    group_by(annee, type_he) %>%
+    summarise(etudiants = sum(etudiants, na.rm = TRUE), .groups = "drop")
+}
+
+etudiants_he <- bind_rows(
+  lecture_etudiants_he(f_etu_heu, "Hautes écoles universitaires"),
+  lecture_etudiants_he(f_etu_hes, "HES et hautes écoles pédagogiques")
+) %>%
+  group_by(annee) %>%
+  summarise(etudiants = sum(etudiants, na.rm = TRUE), .groups = "drop")
+
+compar_bourses_etudiants <- serie_full %>%
+  select(annee, benef) %>%
+  inner_join(etudiants_he, by = "annee") %>%
+  arrange(annee) %>%
+  mutate(taux_boursiers = benef / etudiants * 100)
+```
+
+```{r donnees-formation}
+# ═══════════════════════════════════════════════════════════════════════
+# DONNÉES FORMATION — NIVEAU DE FORMATION
+# ═══════════════════════════════════════════════════════════════════════
+
+# ── 2a. Niveau de formation par région linguistique 2000-2025 ─────────
+# Note : str_detect() (stringr) n'accepte pas ignore.case= ; on utilise (?i) inline
+# Note 2 : certaines feuilles Excel contiennent des cellules mixtes (double/character)
+# => on force TOUT en character dans la fonction, puis as.numeric() après bind_rows()
+read_niv_region <- function(yr) {
+  df <- read_excel(f_niv_reg, sheet = as.character(yr),
+                   col_names = FALSE, skip = 5)
+  if (ncol(df) < 5) return(tibble())
+  names(df)[1:5] <- c("niveau","total","alemanique","romande","italienne")
+  df %>%
+    select(niveau, total, alemanique, romande, italienne) %>%
+    # Forcer character pour que bind_rows() puisse combiner toutes les années
+    mutate(across(c(total, alemanique, romande, italienne), as.character)) %>%
+    filter(
+      !is.na(niveau),
+      niveau != "",
+      !is.na(total),
+      !str_detect(as.character(niveau), "(?i)^\\s*(\\d|y |source|©|rens|personnes)")
+    ) %>%
+    mutate(annee = as.integer(yr))
+}
+
+niv_reg_all <- map_dfr(as.character(2000:2025), read_niv_region) %>%
+  # Conversion en numeric maintenant que toutes les années sont fusionnées
+  mutate(across(c(total, alemanique, romande, italienne), as.numeric))
+
+# Somme robuste pour les années incomplètes :
+# sum(x, na.rm = TRUE) renvoie 0 quand toutes les valeurs sont NA,
+# ce qui créait un faux pic à 0 en 2021. Ici, une année absente reste NA.
+sum_si_present <- function(x) {
+  if (all(is.na(x))) NA_real_ else sum(x, na.rm = TRUE)
+}
+
+# Tertiaire = formation prof. sup. + hautes écoles
+niv_tertiaire <- niv_reg_all %>%
+  filter(str_detect(niveau, "(?i)tertiaire|haute")) %>%
+  group_by(annee) %>%
+  summarise(across(c(total, alemanique, romande, italienne), sum_si_present),
+            .groups = "drop") %>%
+  pivot_longer(c(total, alemanique, romande, italienne),
+               names_to = "region", values_to = "pct_tertiaire") %>%
+  mutate(
+    region = recode(region,
+                    total = "Total Suisse",
+                    alemanique = "Suisse alémanique",
+                    romande = "Suisse romande",
+                    italienne = "Suisse italienne"),
+    # Un taux de formation tertiaire à 0% est impossible ici : on le traite
+    # comme une donnée manquante, pas comme une vraie observation.
+    pct_tertiaire = if_else(pct_tertiaire == 0, NA_real_, pct_tertiaire)
+  )
+
+niv_tertiaire_plot <- niv_tertiaire %>%
+  filter(!is.na(pct_tertiaire))
+
+# ── 2b. Niveau de formation par âge (2025) ───────────────────────────
+# Lecture brute, puis on coupe avant "Hommes" pour ne garder que
+# la section "Total" et éviter de tripler les lignes (Total/Hommes/Femmes)
+niv_age_raw <- read_excel(f_niv_age, sheet = "2025",
+                           col_names = FALSE, skip = 3)
+
+hommes_idx <- which(as.character(niv_age_raw[[1]]) %in% c("Hommes", "Männer"))[1]
+if (!is.na(hommes_idx)) niv_age_raw <- niv_age_raw[seq_len(hommes_idx - 1), ]
+
+niv_age_2025 <- niv_age_raw %>%
+  select(niveau = 1, age_25_64 = 2, age_25_34 = 3,
+         age_35_44 = 4, age_45_54 = 5, age_55_64 = 6) %>%
+  filter(!is.na(niveau),
+         !str_detect(as.character(niveau),
+                     "(?i)^total|^homm|^femm|^\\d|source|©|rens|y inclus")) %>%
+  mutate(across(c(age_25_64:age_55_64), as.numeric)) %>%
+  filter(!is.na(age_25_64)) %>%
+  pivot_longer(starts_with("age"), names_to = "age_group", values_to = "pct") %>%
+  mutate(
+    age_group = recode(age_group,
+                       age_25_64 = "25-64 ans", age_25_34 = "25-34 ans",
+                       age_35_44 = "35-44 ans", age_45_54 = "45-54 ans",
+                       age_55_64 = "55-64 ans"),
+    niveau = str_replace(niveau, "\\s*\\d+$", "") %>% str_trim(),
+    niveau = factor(niveau, levels = c(
+      "École obligatoire",
+      "Degré secondaire II (formation professionnelle)",
+      "Degré secondaire II (formation générale)",
+      "Degré tertiaire (formation professionnelle supérieure)",
+      "Degré tertiaire (hautes écoles)"
+    ))
+  ) %>%
+  filter(!is.na(niveau))
+```
+
+```{r donnees-projections}
+# ═══════════════════════════════════════════════════════════════════════
+# DONNÉES FORMATION — SCÉNARIOS
+# ═══════════════════════════════════════════════════════════════════════
+
+scenarios <- read_csv(f_scen, locale = locale_latin1) %>%
+  filter(str_detect(Scénario, "référence|bas|haut")) %>%
+  group_by(Scénario, `Niveau de formation`, Année) %>%
+  summarise(n = sum(`Nombre de personnes`, na.rm = TRUE), .groups = "drop") %>%
+  rename(scenario = Scénario, niveau = `Niveau de formation`, annee = Année) %>%
+  mutate(
+    scenario_label = case_when(
+      str_detect(scenario, "référence") ~ "Référence",
+      str_detect(scenario, "bas")       ~ "Bas",
+      str_detect(scenario, "haut")      ~ "Haut"
+    ),
+    niveau = recode(
+      niveau,
+      "Degré tertiaire (hautes écoles)" = "Hautes écoles",
+      "Degré tertiaire (formation professionnelle supérieure)" = "Form. prof. sup.",
+      "Degré secondaire II" = "Deg. secondaire II",
+      "Sans formation post-obligatoire" = "Sans form. post-oblig."
+    ),
+    niveau = factor(
+      niveau,
+      levels = c("Hautes écoles", "Form. prof. sup.",
+                 "Deg. secondaire II", "Sans form. post-oblig.")
+    )
+  )
+```
+
+```{r load-inadequation-csv}
+# ── Chargement CSV TA3 ────────────────────────────────────────────────────────
+# Source : OFS (2022), Inadéquation entre la formation et l'emploi, Tableau TA3.
+# Fichier : inadequation_TA3.csv (même répertoire que ce .Rmd)
+# NA = cellule "." (aucune observation) ou "**" (effectif < 25) dans le PDF.
+df_ta3 <- read_csv(inadequation_TA3, show_col_types = FALSE)
+```
+
+***
+
+# Introduction
+  
+Ce projet part d’un constat simple : le niveau de formation de la population suisse augmente nettement, en particulier du côté du tertiaire. Cette transformation peut être lue comme une réussite du système de formation. Mais elle soulève aussi une question plus critique : former davantage de personnes suffit-il à répondre aux besoins du marché du travail ?
+
+
+<div class="section-banner">
+  <div class="section-num">Partie I</div>
+  <div class="section-title">Une Suisse de plus en plus diplômée</div>
+</div>
+
+La première partie documente la hausse de la formation tertiaire. Elle suit trois niveaux de lecture : les cantons, les régions linguistiques et les générations. Elle interroge ensuite les conditions matérielles d'accès aux études, à travers la question des bourses.
+
+## 1.1 Une géographie cantonale de la formation tertiaire (1970-2024)
+
+Avant d'observer les trajectoires régionales et générationnelles, cette première visualisation situe la montée du tertiaire dans l'espace cantonal. Elle permet de voir que la progression n'est pas seulement une tendance nationale abstraite : elle se diffuse progressivement sur le territoire, avec des rythmes et des niveaux différents selon les cantons.
+
+```{r carte-tertiaire-interactive, echo=TRUE, results='asis'}
+n_carte <- length(annees_dispo_carte)
+last_idx_carte <- n_carte - 1L
+annees_js_carte <- toJSON(annees_dispo_carte, auto_unbox = FALSE)
+
+ticks_show_carte <- c(1970L, 1980L, 1990L, 2000L, 2010L, 2015L, 2020L, 2024L)
+tick_spans_carte <- lapply(annees_dispo_carte, \(a) {
+  tags$span(if (a %in% ticks_show_carte) as.character(a) else "")
+})
+
+map_divs_carte <- mapply(function(annee, svg_str) {
+  cls <- if (annee == as.character(max(annees_dispo_carte))) "map-frame active" else "map-frame"
+  tags$div(id = paste0("tertiaire-map-", annee), class = cls, HTML(svg_str))
+}, names(svgs_tertiaire), svgs_tertiaire, SIMPLIFY = FALSE)
+
+css_carte <- HTML('
+<style>
+.tertiaire-map-widget{width:100%;display:flex;flex-direction:column;align-items:center;padding:6px 0 18px;font-family:"Helvetica Neue",Helvetica,Arial,sans-serif}
+.tertiaire-map-widget *{box-sizing:border-box}
+.tertiaire-map-widget .subtitle-line{font-size:12px;color:#777;text-align:center;margin:0 0 16px}
+#tertiaire-carte-container{width:100%;max-width:860px;position:relative}
+.tertiaire-map-widget .map-frame{display:none;width:100%}
+.tertiaire-map-widget .map-frame.active{display:block}
+.tertiaire-map-widget .map-frame svg{width:100%;height:auto;display:block}
+.tertiaire-map-widget .canton-path{cursor:pointer;transition:opacity .12s}
+.tertiaire-map-widget .canton-path:hover{opacity:0.72;stroke-width:2px !important}
+#tertiaire-map-tooltip{position:fixed;display:none;background:white;color:#1a1a1a;padding:8px 13px;border-radius:5px;border:1px solid #d0d0d0;font-size:13px;font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;box-shadow:2px 3px 8px rgba(0,0,0,0.15);pointer-events:none;z-index:9999;line-height:1.6}
+#tertiaire-map-tooltip .tt-canton{font-weight:700;font-size:14px}
+#tertiaire-map-tooltip .tt-pct{color:#2171b5;font-weight:700}
+#tertiaire-map-tooltip hr{border:none;border-top:1px solid #eee;margin:5px 0}
+#tertiaire-slider-panel{width:100%;max-width:860px;margin-top:10px;padding:12px 22px 10px;background:#f6f8fb;border:1px solid #dde2ea;border-radius:8px}
+#tertiaire-annee-display{font-size:24px;font-weight:700;color:#2171b5;text-align:center;margin-bottom:8px;letter-spacing:1px}
+.tertiaire-map-widget .slider-controls{display:flex;align-items:center;gap:14px}
+#tertiaire-btn-play{flex-shrink:0;width:34px;height:34px;border:none;border-radius:50%;background:#2171b5;color:white;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .2s;user-select:none}
+#tertiaire-btn-play:hover{background:#155a9a}
+#tertiaire-annee-slider{flex:1;-webkit-appearance:none;appearance:none;height:5px;border-radius:3px;background:linear-gradient(to right,#2171b5 100%,#d0dce8 100%);outline:none;cursor:pointer}
+#tertiaire-annee-slider::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:#2171b5;border:2px solid white;box-shadow:0 1px 5px rgba(0,0,0,.3);cursor:pointer}
+#tertiaire-annee-slider::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:#2171b5;border:2px solid white;cursor:pointer}
+.tertiaire-map-widget .tick-row{display:flex;justify-content:space-between;margin-top:5px;padding:0 2px;font-size:9px;color:#aaa}
+.tertiaire-map-widget .caption-line{font-size:10px;color:#9a9a9a;text-align:right;margin-top:10px;width:100%;max-width:860px}
+</style>
+')
+
+js_carte <- HTML(paste0('
+<script>
+(function(){
+var root=document.getElementById("tertiaire-map-widget");
+var annees=', annees_js_carte, ';
+var n=annees.length;
+var slider=document.getElementById("tertiaire-annee-slider");
+var display=document.getElementById("tertiaire-annee-display");
+var btn=document.getElementById("tertiaire-btn-play");
+var tooltip=document.getElementById("tertiaire-map-tooltip");
+var timer=null;
+var curIdx=n-1;
+
+function updateTrack(idx){
+  var pct=(idx/(n-1))*100;
+  slider.style.background="linear-gradient(to right,#2171b5 "+pct+"%,#d0dce8 "+pct+"%)";
+}
+function showYear(idx){
+  curIdx=idx;
+  var a=annees[idx];
+  root.querySelectorAll(".map-frame").forEach(function(el){el.classList.remove("active");});
+  var frame=document.getElementById("tertiaire-map-"+a);
+  if(frame) frame.classList.add("active");
+  display.textContent=a;
+  slider.value=idx;
+  updateTrack(idx);
+}
+slider.addEventListener("input",function(){showYear(parseInt(this.value));});
+btn.addEventListener("click",function(){
+  if(timer){clearInterval(timer);timer=null;btn.innerHTML="&#9654;";}
+  else{
+    if(curIdx>=n-1) showYear(0);
+    btn.innerHTML="&#9646;&#9646;";
+    timer=setInterval(function(){
+      if(curIdx>=n-1){clearInterval(timer);timer=null;btn.innerHTML="&#9654;";return;}
+      showYear(curIdx+1);
+    },900);
+  }
+});
+updateTrack(curIdx);
+
+document.addEventListener("mousemove",function(e){
+  var el=e.target;
+  if(el.classList&&el.classList.contains("canton-path")){
+    var nom=el.getAttribute("data-nom")||"";
+    var abbr=el.getAttribute("data-canton")||"";
+    var pct=el.getAttribute("data-pct")||"N/D";
+    var annee=el.getAttribute("data-annee")||"";
+    tooltip.innerHTML=
+      "<span class=\'tt-canton\'>"+nom+" ("+abbr+")</span>"+
+      "<hr>"+
+      "Taux tertiaire&nbsp;: <span class=\'tt-pct\'>"+pct+"</span><br>"+
+      "Année&nbsp;: <b>"+annee+"</b>";
+    var x=e.clientX+16, y=e.clientY+16;
+    if(x+200>window.innerWidth) x=e.clientX-210;
+    if(y+90>window.innerHeight) y=e.clientY-90;
+    tooltip.style.left=x+"px";
+    tooltip.style.top=y+"px";
+    tooltip.style.display="block";
+  } else {
+    tooltip.style.display="none";
+  }
+});
+document.addEventListener("mouseleave",function(){tooltip.style.display="none";},true);
+})();
+</script>
+'))
+
+tagList(
+  css_carte,
+  tags$div(
+    id = "tertiaire-map-widget",
+    class = "tertiaire-map-widget",
+    tags$div(id = "tertiaire-map-tooltip"),
+    tags$p(class = "subtitle-line",
+           "Formation achevée la plus élevée par canton — OFS"),
+    tags$div(id = "tertiaire-carte-container", tagList(map_divs_carte)),
+    tags$div(
+      id = "tertiaire-slider-panel",
+      tags$div(id = "tertiaire-annee-display", as.character(max(annees_dispo_carte))),
+      tags$div(
+        class = "slider-controls",
+        tags$button(id = "tertiaire-btn-play", title = "Lecture automatique", HTML("&#9654;")),
+        tags$input(
+          id = "tertiaire-annee-slider", type = "range",
+          min = "0", max = as.character(last_idx_carte),
+          value = as.character(last_idx_carte), step = "1"
+        )
+      ),
+      tags$div(class = "tick-row", tagList(tick_spans_carte))
+    ),
+    tags$p(
+      class = "caption-line",
+      HTML("Source&nbsp;: OFS &mdash; Formation achevée la plus élevée par canton &nbsp;|&nbsp; Fond&nbsp;: swisstopo / swissMaps / Natural Earth selon disponibilité")
+    ),
+    js_carte
+  )
+)
+```
+
+<div class="insight">
+<strong>Lecture d'ensemble.</strong> La formation tertiaire progresse dans l'ensemble du pays, mais elle reste territorialement différenciée. Les cantons urbains et universitaires apparaissent souvent plus élevés, tandis que d'autres cantons rattrapent progressivement leur retard si bien qu'une certaine uniformisation est observée.
+</div>
+
+## 1.2 La montée du tertiaire par région linguistique (2000-2025)
+
+```{r fig6-region-ts, echo=TRUE, fig.height=6}
+# Étiquettes finales : on place manuellement les labels pour éviter que
+# "Total Suisse" soit masqué par "Suisse alémanique", dont la valeur 2025 est proche.
+labels_2025_region <- niv_tertiaire_plot %>%
+  filter(annee == 2025) %>%
+  mutate(
+    label_y = case_when(
+      region == "Suisse alémanique" ~ pct_tertiaire + 0.7,
+      region == "Total Suisse"      ~ pct_tertiaire - 0.4,
+      region == "Suisse romande"    ~ pct_tertiaire + 0.1,
+      region == "Suisse italienne"  ~ pct_tertiaire - 0.6,
+      TRUE ~ pct_tertiaire
+    )
+  )
+
+ggplot(niv_tertiaire_plot, aes(x = annee, y = pct_tertiaire, color = region, group = region)) +
+  geom_line(linewidth = 1.2) +
+  geom_point(data = labels_2025_region,
+             size = 3, shape = 21, fill = "white", stroke = 1.5) +
+  geom_label_repel(
+  data = labels_2025_region,
+  aes(
+    x = annee,
+    y = pct_tertiaire,
+    label = paste0(region, "\n", round(pct_tertiaire, 1), "%")
+  ),
+  nudge_x = 2,
+  direction = "y",
+  hjust = 0,
+  box.padding = 0.35,
+  label.padding = unit(0.15, "lines"),
+  min.segment.length = 0,
+  segment.color = COL_GREY,
+  size = 3,
+  show.legend = FALSE
+) +
+  scale_color_manual(values = pal_reg_ts, guide = "none") +
+  scale_y_continuous(labels = ~paste0(., "% ")) +
+  coord_cartesian(xlim = c(2000, 2028), clip = "off") +
+  labs(title = "Part de la population avec une formation tertiaire (25-64 ans)",
+       subtitle = "% combiné Hautes Écoles + Formation professionnelle supérieure, 2000-2025",
+       x = NULL, y = "% tertiaire",
+       caption = "Source : OFS — Niveau de formation de la population résidante selon la région linguistique (ESPA). Les valeurs absentes/égales à 0 sont traitées comme données manquantes.") +
+  theme_p() +
+  theme(legend.position = "none",
+        plot.margin = margin(5.5, 45, 5.5, 5.5))
+```
+
+<div class="insight">
+<strong>Une augmentation fulgurante.</strong> On observe une dynamique nationale : depuis 2000, la part de la population ayant achevé une formation tertiaire augmente dans toutes les régions linguistiques. Malgré des niveaux de départ différents, la tendance est commune à l’ensemble du pays et traduit une transformation structurelle du profil éducatif suisse. Le tertiaire devient progressivement une norme plus répandue.
+</div>
+
+<div class="method-note">
+<strong>À ne pas surinterpréter.</strong> Le graphique montre une différence régionale, mais il ne permet pas à lui seul d'en identifier la cause. Les explications institutionnelles ou culturelles doivent être lues comme des hypothèses plausibles, pas comme des résultats directement démontrés par la visualisation.
+</div>
+
+***
+
+
+## 1.3 La formation selon l'âge — un signal générationnel fort (2025)
+
+```{r fig7-age-formation, echo=TRUE, fig.height=6.5, fig.width=10}
+ggplot(niv_age_2025 %>% filter(age_group != "25-64 ans"),
+       aes(x=age_group, y=pct, fill=niveau)) +
+  geom_col(width=0.72, alpha=0.9) +
+  geom_text(aes(label=if_else(pct>4, paste0(round(pct,0),"%"), "")),
+            position=position_stack(vjust=0.5),
+            size=3, color="white", fontface="bold") +
+  scale_fill_manual(values=pal_niv, name=NULL,
+                    labels=~str_wrap(.,28)) +
+  scale_y_continuous(labels=~paste0(.,"% ")) +
+  labs(title="Niveau de formation de la population résidante par groupe d'âge (2025)",
+       subtitle="Population résidante permanente de 25 à 64 ans — en %",
+       x="Groupe d'âge", y="% de la population",
+       caption="Source : OFS — Formation achevée la plus élevée selon l'âge et le sexe (ESPA 2025)") +
+  theme_p() +
+  # Légende à droite : elle reste séparée du graphique et les carrés
+  # gardent une taille uniforme, y compris pour "École obligatoire".
+  theme(
+    legend.position   = "right",
+    legend.text       = element_text(size = 8.8),
+    legend.key.height = unit(0.45, "cm"),
+    legend.key.width  = unit(0.45, "cm"),
+    legend.spacing.y  = unit(0.18, "cm")
+  ) +
+  guides(
+    fill = guide_legend(
+      ncol         = 1,
+      byrow        = TRUE,
+      keywidth     = unit(0.45, "cm"),
+      keyheight    = unit(0.45, "cm"),
+      override.aes = list(alpha = 1)   # force l'opacité à 1 pour toutes les cases
+    )
+  )
+```
+
+<div class="insight">
+**L'effet de cohorte est spectaculaire.** Les 25-34 ans affichent un taux de hautes écoles bien supérieur aux 55-64 ans. Ce n'est pas que les seniors aient « régressé » — c'est que chaque nouvelle génération est arrivée sur le marché avec une formation plus élevée. 
+</div>
+
+
+## 1.4 Les bourses accompagnent-elles la montée du tertiaire ?
+
+Après avoir observé la montée du tertiaire et son ancrage générationnel, on revient à une condition très concrète : l'accès matériel aux études. Les bourses peuvent contribuer à rendre les parcours post-obligatoires et supérieurs accessibles à une partie de la population. La question devient donc : **les bourses suivent-elles suffisamment la croissance de la population étudiante pour accompagner cette démocratisation du tertiaire ?**
+
+
+```{r fig1-etudiants-bourses-aires, echo=TRUE, fig.height=5.8}
+# Variante en aires empilées : visualisation d'ordre de grandeur.
+# Les bénéficiaires de bourses OFS concernent l'ensemble des degrés de formation,
+# alors que les étudiants agrégés ici correspondent aux hautes écoles.
+# Le graphique sert donc à situer le poids relatif des bourses, pas à mesurer
+# un taux exact de couverture individuelle des étudiants HE.
+compar_area <- compar_bourses_etudiants %>%
+  transmute(
+    annee,
+    `Bénéficiaires d'une bourse` = benef,
+    `Étudiants sans bourse` = pmax(etudiants - benef, 0)
+  ) %>%
+  pivot_longer(-annee, names_to = "statut", values_to = "n") %>%
+  mutate(statut = factor(
+    statut,
+    levels = c("Étudiants sans bourse", "Bénéficiaires d'une bourse")
+  ))
+
+derniere_annee_area <- compar_bourses_etudiants %>%
+  filter(annee == max(annee, na.rm = TRUE))
+
+ggplot(compar_area, aes(x = annee, y = n / 1000, fill = statut)) +
+  geom_area(alpha = 0.88, color = "white", linewidth = 0.2) +
+  geom_label(
+    data = derniere_annee_area,
+    aes(
+      x = annee - 1.8,
+      y = etudiants / 1000 * 0.82,
+      label = paste0(round(taux_boursiers, 1),
+                     " bénéficiaires\npour 100 étudiants")
+    ),
+    inherit.aes = FALSE,
+    size = 3, fill = "white", color = COL_TEXT, label.size = 0.25
+  ) +
+  scale_fill_manual(
+    values = pal_bourses,
+    name = NULL
+  ) +
+  scale_y_continuous(labels = ~paste0(., "k"), limits = c(0, NA)) +
+  scale_x_continuous(
+    breaks = seq(min(compar_bourses_etudiants$annee, na.rm = TRUE),
+                 max(compar_bourses_etudiants$annee, na.rm = TRUE),
+                 by = 4)
+  ) +
+  labs(
+    title = "Bénéficiaires de bourses face à la croissance étudiante",
+    subtitle = paste0(
+      "Aires empilées : volume de bénéficiaires rapporté aux effectifs des hautes écoles — ",
+      min(compar_bourses_etudiants$annee, na.rm = TRUE), "-",
+      max(compar_bourses_etudiants$annee, na.rm = TRUE)
+    ),
+    x = NULL, y = "Étudiants (milliers)",
+    caption = "Source : OFS — Bourses d'études & étudiants des hautes écoles (SHIS-studex). Calculs propres."
+  ) +
+  theme_p() +
+  theme(legend.position = "top")
+```
+
+<div class="insight">
+<strong>Lecture du graphique.</strong> La population étudiante des hautes écoles augmente, tandis que le volume de bénéficiaires de bourses reste beaucoup plus limité. Cela ne prouve pas que les bourses causent la montée du tertiaire, mais cela permet de poser une question centrale : si davantage de jeunes accèdent aux hautes écoles, le soutien financier suit-il au même rythme ? Le graphique suggère plutôt une aide concentrée sur une fraction relativement stable ou limitée de la population étudiante.
+</div>
+
+<div class="method-note">
+<strong>Limite de comparaison.</strong> Le numérateur et le dénominateur ne recouvrent pas parfaitement la même population : les données de bourses agrègent les bénéficiaires de l'ensemble des degrés de formation, tandis que les données étudiantes mobilisées ici portent sur les hautes écoles. Le ratio « bénéficiaires pour 100 étudiants » doit donc être lu comme un indicateur approximatif de couverture, pas comme un taux exact de boursiers parmi les étudiants HE.
+</div>
+
+
+
+***
+
+<div class="transition">
+<strong>Transition vers la seconde partie.</strong> La première partie montre que la Suisse devient structurellement plus diplômée : la hausse du tertiaire se lit dans les cantons et apparaît très fortement dans les jeunes générations. Mais cette progression quantitative ne dit pas encore si les compétences produites correspondent aux besoins concrets du marché du travail. C’est précisément ce décalage possible que la seconde partie examine à travers les indicateurs de pénurie.
+</div>
+
+<div class="section-banner">
+  <div class="section-num">Partie II</div>
+  <div class="section-title">Des pénuries malgré la montée du tertiaire : le problème de l'adéquation</div>
+  <div class="section-sub">Les besoins du marché du travail ne se résument pas au nombre total de diplômés</div>
+</div>
+
+La seconde partie déplace le regard du système de formation vers le marché du travail. Si la population active devient plus diplômée, on pourrait s'attendre à une réduction mécanique des tensions de recrutement. Les données du SECO montrent cependant une réalité plus différenciée.
+
+## 2.1 Indice global de pénurie par groupe de professions
+
+L'indice global agrège six indicateurs (chômage, postes vacants, immigration, croissance de l'emploi, besoin de remplacement démographique, exigences de qualification) en une valeur comprise entre 0 et 10. La valeur de référence pour l'ensemble de l'économie est **`r ref_indice_label`**. Un indice supérieur signale une pénurie structurelle de main-d'œuvre qualifiée plus marquée que la moyenne.
+
+<div class="method-note">
+<strong>Limite de l'indice SECO.</strong> L'indice est un outil synthétique : il permet de comparer les professions entre elles, mais il ne dit pas quelle cause domine dans chaque cas ni comment la pénurie évoluera à court terme. Il doit être interprété avec les indicateurs composant l'indice, d'où l'intérêt du graphique radar suivant.
+</div>
+
+```{r graphe1-classement, echo=TRUE, fig.height=11}
+# Palette de 4 niveaux
+df_top %>%
+  mutate(profession = fct_reorder(profession, indice_global)) %>%
+  ggplot(aes(x = indice_global, y = profession, fill = categorie)) +
+  # Barres
+  geom_col(width = 0.75, alpha = 0.92) +
+  # Valeurs de l'indice en bout de barre
+  geom_text(
+    aes(label = sprintf("%.1f", indice_global)),
+    hjust = -0.15, size = 3.2, color = COL_TEXT, fontface = "bold"
+  ) +
+  # Ligne de référence économie globale — adoucie (alpha + linewidth réduits)
+  geom_vline(
+    xintercept = ref_indice,
+    linetype = "dashed", color = COL_REF, linewidth = 0.5, alpha = 0.45
+  ) +
+  annotate(
+    "text", x = ref_indice + 0.05, y = 1.5,
+    label = paste0("Économie\nglobale (", ref_indice_label, ")"),
+    hjust = 0, size = 3.2, color = COL_REF, fontface = "italic"
+  ) +
+  scale_fill_manual(values = pal_penurie, name = "Niveau de pénurie") +
+  scale_x_continuous(limits = c(0, 10), breaks = 0:10, expand = expansion(mult = c(0, 0.08))) +
+  labs(
+    # Titre découpé manuellement pour garantir l'affichage complet sur toute largeur
+    title    = str_wrap(
+      "Indice global de disponibilité de la main-d'œuvre qualifiée par groupe de professions",
+      width = 75
+    ),
+    subtitle = "Plus l'indice est élevé, plus les signes de pénurie structurelle sont marqués",
+    x        = "Indice global (0–10)",
+    y        = NULL,
+    caption  = "Source : SECO (2023), Disponibilité de la main-d'œuvre : un système d'indicateurs pour l'évaluer."
+  ) +
+  theme_p() +
+  theme(
+    legend.box  = "vertical",
+    axis.text.y = element_text(size = 9.5)
+  ) +
+  guides(
+    fill = guide_legend(override.aes = list(size = 4), nrow = 2)
+  )
+```
+
+***
+
+## 2.2 Profils de pénurie par profession : analyse radar
+
+Six professions ont été sélectionnées pour représenter l'éventail complet des situations : des professions en forte tension (santé, TIC), des situations intermédiaires contrastées (enseignement, santé intermédiaire, bâtiment) et des professions moins touchées (commerçants et vendeurs). Chaque axe représente un indicateur normalisé de 0 à 10. Le radar est conservé ici comme outil exploratoire : il sert à comparer des profils de pénurie, plutôt qu'à classer précisément les professions.
+
+> **Note de lecture :** Pour le chômage, le score est *inversé* (un chômage faible → score élevé → signe de pénurie). Les autres indicateurs sont dans le sens naturel (valeur élevée = pression accrue).
+
+```{r graphe2-radar, echo=TRUE, fig.height=8, fig.width=10}
+# ── Sélection des 6 professions représentatives ──────────────────────────────
+# • Spécialistes de la santé (22)     → forte pénurie, profil équilibré
+# • Spécialistes TIC (25)             → forte pénurie, dominante postes vacants
+# • Spécialistes de l'enseignement (23) → pénurie moyenne, faibles postes vacants
+# • Professions interm. santé (32)    → pénurie modérée, très féminisé
+# • Métiers qualifiés bâtiment (71)   → sous la moyenne, postes vacants élevés
+# • Commerçants et vendeurs (52)      → faible pénurie, indice le plus bas
+
+# Filtre par code CH-ISCO-19 pour éviter les problèmes de libellé exact dans le CSV
+# 22 = Spécialistes de la santé       | 25 = Spécialistes TIC
+# 23 = Spécialistes de l'enseignement | 32 = Prof. interm. santé
+# 71 = Métiers qualifiés bâtiment     | 52 = Commerçants et vendeurs
+codes_radar <- c("22", "25", "23", "32", "71", "52")
+
+df_radar_raw <- df_top %>%
+  filter(trimws(as.character(code_ch_isco_19)) %in% codes_radar) %>%
+  select(profession,
+         `Chômage (inv.)` = chomage_pct,
+         `Postes vacants`  = postes_vacants_pct,
+         `Immigration`     = immigration_pct,
+         `Croissance emploi` = emploi_pct,
+         `Remplacement démog.` = demographie_pct,
+         `Qualification`   = qualification_pct)
+
+# Récupérer les valeurs brutes de l'ensemble de l'économie pour borne globale
+all_vals <- df_raw %>%
+  filter(!is.na(indice_global)) %>%
+  mutate(across(c(chomage_pct, postes_vacants_pct, immigration_pct,
+                   emploi_pct, demographie_pct, qualification_pct), as.numeric))
+
+norm_col <- function(x_vec, col, inverse = FALSE) {
+  full <- c(all_vals[[col]], x_vec)
+  lo <- min(full, na.rm = TRUE); hi <- max(full, na.rm = TRUE)
+  s <- (x_vec - lo) / (hi - lo) * 10
+  if (inverse) 10 - s else s
+}
+
+df_norm <- df_radar_raw %>%
+  mutate(
+    `Chômage (inv.)`     = norm_col(`Chômage (inv.)`,    "chomage_pct",       inverse = TRUE),
+    `Postes vacants`      = norm_col(`Postes vacants`,     "postes_vacants_pct"),
+    `Immigration`         = norm_col(`Immigration`,        "immigration_pct"),
+    `Croissance emploi`   = norm_col(`Croissance emploi`,  "emploi_pct"),
+    `Remplacement démog.` = norm_col(`Remplacement démog.`,"demographie_pct"),
+    `Qualification`       = norm_col(`Qualification`,      "qualification_pct")
+  )
+
+# ── Couleurs définies dans le chunk theme selon palette_mode ──
+profs_ordered <- df_norm$profession
+
+par(mfrow = c(2, 3), mar = c(1, 1, 3, 1), oma = c(3, 0, 3, 0))
+
+for (i in seq_along(profs_ordered)) {
+  prof <- profs_ordered[i]
+  vals <- df_norm %>% filter(profession == prof) %>%
+    select(-profession) %>% as.numeric()
+
+  dat <- rbind(
+    rep(10, 6),   # max
+    rep(0,  6),   # min
+    vals
+  )
+  colnames(dat) <- colnames(df_norm)[-1]
+
+  radarchart(
+    as.data.frame(dat),
+    axistype  = 1,
+    pcol      = pal_radar[i],
+    pfcol     = adjustcolor(pal_radar[i], 0.25),
+    plwd      = 2.5,
+    cglcol    = COL_GRID,
+    cglty     = 1,
+    cglwd     = 0.6,
+    axislabcol = COL_TEXT_LIGHT,
+    caxislabels = c("0","2.5","5","7.5","10"),
+    vlcex     = 0.82,
+    title     = paste0(strwrap(prof, width = 30), collapse = "\n")
+  )
+}
+
+mtext(
+  "Profils des 6 indicateurs de pénurie (scores normalisés 0–10)",
+  outer = TRUE, side = 3, line = 1, font = 2, cex = 1.1, col = COL_TEXT
+)
+mtext(
+  "Source : SECO (2023). Chômage inversé : un score élevé indique peu de chômeurs disponibles (signe de pénurie).",
+  outer = TRUE, side = 1, line = 1, cex = 0.8, col = COL_TEXT_LIGHT
+)
+par(mfrow = c(1,1), mar = c(5,4,4,2), oma = c(0,0,0,0))
+```
+
+<div class="insight">
+<strong>Lecture d'ensemble.</strong> La pénurie n'a pas un seul visage. Dans certaines professions, elle s'explique surtout par un faible volume de travailleurs disponibles ; dans d'autres, par des postes vacants nombreux, des besoins de remplacement démographique ou des exigences élevées de qualification. Cette diversité montre que la réponse ne peut pas être uniquement de « former plus ». Elle doit aussi interroger la manière dont les diplômés s'insèrent dans les secteurs qui recrutent. Autrement dit, les pénuries invitent à poser une seconde question : les formations suivies débouchent-elles effectivement sur des emplois correspondant au niveau et au domaine de qualification atteints ?
+</div>
+
+
+
+## 2.3 Quand la formation ne rencontre pas toujours l'emploi
+
+<div class="transition">
+La Suisse forme de plus en plus, mais les pénuries persistent dans certains secteurs. Cette coexistence oblige à dépasser l'opposition simple entre « manque de diplômés » et « hausse du niveau de formation ». Le phénomène d'inadéquation — ici défini comme le fait d'occuper un poste ne requérant pas le niveau de formation atteint ou ne mobilisant pas les qualifications acquises — permet d'examiner le décalage entre formation et emploi.
+</div>
+
+## Taux d'inadéquation par domaine de formation {.tabset}
+
+### Taux d'inadéquation total
+
+```{r ouverture-inadecuation-total, echo=TRUE, fig.height=6, fig.width=10}
+ref_total <- 7.6   # ligne Total, colonne taux_total, TA3
+
+df_total <- df_ta3 %>%
+  select(domaine, taux_total) %>%
+  mutate(
+    domaine = fct_reorder(domaine, taux_total),
+    couleur = if_else(taux_total > ref_total, rouge, bleu)
+  )
+
+ggplot(df_total, aes(x = taux_total, y = domaine, fill = couleur)) +
+  geom_col(width = 0.65, show.legend = FALSE) +
+  # Ligne de référence adoucie : alpha réduit pour qu'elle ne domine pas
+  geom_vline(xintercept = ref_total, linetype = "dashed",
+             color = COL_REF, linewidth = 0.6, alpha = 0.45) +
+  annotate("text", x = ref_total + 0.2, y = 0.6,
+           label = paste0("Moyenne suisse (", ref_total, " %)"),
+           hjust = 0, size = 3.1, color = COL_REF, fontface = "italic") +
+  geom_text(
+    aes(label = paste0(taux_total, " %")),
+    hjust = -0.15, size = 3.2, fontface = "bold", color = COL_TEXT
+  ) +
+  scale_fill_identity() +
+  scale_x_continuous(
+    limits = c(0, 24),
+    breaks = seq(0, 20, 5),
+    labels = function(x) paste0(x, " %"),
+    expand = expansion(mult = c(0, 0.02))
+  ) +
+  labs(
+    title    = "Taux d'inadéquation formation-emploi par domaine de formation",
+    # Sous-titre allégé : la définition technique est retirée du graphique
+    subtitle = "Part des diplômés du degré tertiaire occupant un emploi inadéquat un an après l'obtention du titre (2018)",
+    x        = "Taux d'inadéquation (%)",
+    y        = NULL,
+    caption  = "Source : OFS (2022), Inadéquation entre la formation et l'emploi — Tableau TA3, colonne Total (tous titres confondus)."
+  ) +
+  theme_p() +
+  theme(axis.text.y = element_text(size = 10), plot.caption = element_text(size = 8))
+```
+
+<div class="insight">
+<strong>Des écarts marqués selon le domaine d'études.</strong> Le domaine <em>Lettres et arts</em> présente de loin le taux d'inadéquation le plus élevé (20,1 %). À l'opposé, <em>Éducation</em> (2,5 %) et <em>Santé et protection sociale</em> (3,2 %) affichent des taux très faibles — cohérents avec les fortes pénuries structurelles observées dans ces secteurs. La ligne pointillée matérialise la moyenne suisse (7,6 %) : les domaines au-dessus peuvent signaler une difficulté plus forte à convertir le diplôme en emploi correspondant au niveau de qualification atteint. Cette lecture doit rester prudente, car l'indicateur ne permet pas à lui seul d'identifier la cause exacte du décalage.
+</div>
+
+### Master HEU vs Bachelor HES
+
+Le graphique ci-dessous compare le taux d'inadéquation par domaine en distinguant les titulaires d'un **master HEU** et d'un **bachelor HES** — les deux filières dont les effectifs sont les plus importants dans le tertiaire suisse.
+
+```{r ouverture-inadecuation-heu-hes, echo=TRUE, fig.height=7.8, fig.width=11.5}
+ref_heu <- 5.9   # moyenne Master HEU, ligne Total TA3
+ref_hes <- 9.0   # moyenne Bachelor HES, ligne Total TA3
+
+# Ordre d'affichage demandé pour les domaines de formation.
+# L'axe y de ggplot affiche le premier niveau en bas : on utilise donc rev()
+# pour obtenir cet ordre de haut en bas dans le graphique.
+ordre_domaines_heu_hes <- c(
+  "Lettres et arts",
+  "Sciences nat. math. et stat.",
+  "Sciences sociales journ.",
+  "Commerce administration et droit",
+  "Services",
+  "Agriculture sylviculture",
+  "TIC",
+  "Education",
+  "Ingénierie ind. transf.",
+  "Santé et protection sociale"
+)
+
+# Les libellés du tableau OFS sont parfois plus longs que ceux utilisés dans
+# le graphique. Cette fonction les harmonise avant de forcer l'ordre du facteur.
+normaliser_domaine_heu_hes <- function(x) {
+  x_clean <- str_squish(as.character(x))
+
+  case_when(
+    str_detect(x_clean, regex("lettres|arts", ignore_case = TRUE)) ~
+      "Lettres et arts",
+
+    str_detect(x_clean, regex("sciences nat|math|stat", ignore_case = TRUE)) ~
+      "Sciences nat. math. et stat.",
+
+    str_detect(x_clean, regex("sciences sociales|journal", ignore_case = TRUE)) ~
+      "Sciences sociales journ.",
+
+    str_detect(x_clean, regex("commerce|administration|droit", ignore_case = TRUE)) ~
+      "Commerce administration et droit",
+
+    str_detect(x_clean, regex("^services?$", ignore_case = TRUE)) ~
+      "Services",
+
+    str_detect(x_clean, regex("agriculture|sylviculture", ignore_case = TRUE)) ~
+      "Agriculture sylviculture",
+
+    str_detect(x_clean, regex("\bTIC\b|technologies.*information|informatique|communication", ignore_case = TRUE)) ~
+      "TIC",
+
+    str_detect(x_clean, regex("éducation|education", ignore_case = TRUE)) ~
+      "Education",
+
+    str_detect(x_clean, regex("ingénierie|ingenierie|industr|transformation", ignore_case = TRUE)) ~
+      "Ingénierie ind. transf.",
+
+    str_detect(x_clean, regex("santé|sante|protection sociale", ignore_case = TRUE)) ~
+      "Santé et protection sociale",
+
+    TRUE ~ x_clean
+  )
+}
+
+# Format large pour les segments, puis format long pour les points et labels.
+# Le filtre retire notamment la ligne Total et empêche les catégories non reconnues
+# d'être empilées dans une ligne NA.
+# Attention : Services et Education n'ont qu'une seule valeur exploitable dans TA3.
+# On force donc aussi l'ordre au niveau de scale_y_discrete(), sinon ggplot peut
+# les ajouter en haut de l'axe après avoir entraîné l'échelle sur les segments.
+df_heu_hes_wide <- df_ta3 %>%
+  transmute(
+    domaine = normaliser_domaine_heu_hes(domaine),
+    master_heu,
+    bachelor_hes
+  ) %>%
+  filter(domaine %in% ordre_domaines_heu_hes) %>%
+  mutate(
+    domaine = factor(domaine, levels = rev(ordre_domaines_heu_hes))
+  )
+
+df_segments_heu_hes <- df_heu_hes_wide %>%
+  filter(!is.na(master_heu), !is.na(bachelor_hes))
+
+df_points_heu_hes <- df_heu_hes_wide %>%
+  pivot_longer(
+    cols = c(master_heu, bachelor_hes),
+    names_to = "diplome",
+    values_to = "taux_inadeq"
+  ) %>%
+  mutate(
+    diplome = recode(
+      diplome,
+      master_heu   = "Master HEU",
+      bachelor_hes = "Bachelor HES"
+    ),
+    diplome = factor(diplome, levels = c("Master HEU", "Bachelor HES")),
+    label = paste0(taux_inadeq, " %")
+  ) %>%
+  filter(!is.na(taux_inadeq))
+
+ggplot() +
+  geom_segment(
+    data = df_segments_heu_hes,
+    aes(
+      x = master_heu,
+      xend = bachelor_hes,
+      y = domaine,
+      yend = domaine
+    ),
+    color = "#A8A8A8",
+    linewidth = 1.05,
+    alpha = 0.72,
+    show.legend = FALSE
+  ) +
+  geom_vline(
+    xintercept = ref_heu,
+    linetype = "dashed",
+    color = COL_BLUE,
+    linewidth = 0.55,
+    alpha = 0.35
+  ) +
+  geom_vline(
+    xintercept = ref_hes,
+    linetype = "dashed",
+    color = COL_HES,
+    linewidth = 0.55,
+    alpha = 0.35
+  ) +
+  geom_point(
+    data = df_points_heu_hes,
+    aes(x = taux_inadeq, y = domaine, color = diplome),
+    size = 3.7,
+    shape = 21,
+    fill = "white",
+    stroke = 1.8,
+    show.legend = TRUE
+  ) +
+  # Choix visuel plus stable : les labels Master HEU sont toujours à gauche
+  # du point et les labels Bachelor HES toujours à droite. Cela évite que les
+  # segments gris traversent les pourcentages.
+  geom_label(
+    data = df_points_heu_hes %>% filter(diplome == "Master HEU"),
+    aes(x = taux_inadeq - 0.72, y = domaine, label = label, color = diplome),
+    hjust = 1,
+    size = 3.0,
+    fontface = "bold",
+    fill = "white",
+    label.size = 0,
+    label.padding = grid::unit(0.10, "lines"),
+    show.legend = FALSE
+  ) +
+  geom_label(
+    data = df_points_heu_hes %>% filter(diplome == "Bachelor HES"),
+    aes(x = taux_inadeq + 0.72, y = domaine, label = label, color = diplome),
+    hjust = 0,
+    size = 3.0,
+    fontface = "bold",
+    fill = "white",
+    label.size = 0,
+    label.padding = grid::unit(0.10, "lines"),
+    show.legend = FALSE
+  ) +
+  annotate(
+    "label",
+    x = ref_heu - 0.28,
+    y = 0.55,
+    label = paste0("Moy. HEU (", ref_heu, "%)"),
+    hjust = 1,
+    size = 2.8,
+    color = COL_BLUE,
+    fill = "white",
+    label.size = 0,
+    fontface = "italic"
+  ) +
+  annotate(
+    "label",
+    x = ref_hes + 0.28,
+    y = 0.55,
+    label = paste0("Moy. HES (", ref_hes, "%)"),
+    hjust = 0,
+    size = 2.8,
+    color = COL_HES,
+    fill = "white",
+    label.size = 0,
+    fontface = "italic"
+  ) +
+  scale_color_manual(
+    values = c("Master HEU" = COL_BLUE, "Bachelor HES" = COL_HES),
+    name = "Type de diplôme"
+  ) +
+  scale_x_continuous(
+    limits = c(-0.5, 31),
+    breaks = seq(0, 30, 5),
+    labels = function(x) paste0(x, " %"),
+    expand = expansion(mult = c(0.01, 0.04))
+  ) +
+  scale_y_discrete(
+    limits = rev(ordre_domaines_heu_hes),
+    drop = FALSE
+  ) +
+  coord_cartesian(clip = "off") +
+  labs(
+    title    = "Taux d'inadéquation par domaine — Master HEU vs Bachelor HES",
+    subtitle = "Diplômés du degré tertiaire, un an après l'obtention du titre (2018)",
+    x        = "Taux d'inadéquation (%)",
+    y        = NULL,
+    caption  = "Source : OFS (2022), Inadéquation entre la formation et l'emploi — Tableau TA3."
+  ) +
+  theme_p() +
+  theme(
+    legend.position = "top",
+    axis.text.y     = element_text(size = 9.5),
+    panel.grid.major.y = element_line(color = COL_GRID, linewidth = 0.45),
+    panel.grid.minor = element_blank(),
+    plot.caption    = element_text(size = 8),
+    plot.margin     = margin(10, 24, 10, 18)
+  ) +
+  guides(color = guide_legend(override.aes = list(size = 4)))
+```
+
+<div class="insight">
+<strong>Les écarts d’inadéquation varient fortement selon les filières.</strong> Les domaines Lettres et arts ainsi que Sciences sociales, journalisme et information apparaissent plus exposés, tandis que Santé et protection sociale présente les taux les plus faibles.
+</div>
+
+
+***
+
+## 2.4 Projection 2025-2055 : la montée du tertiaire va se poursuivre
+
+Si l'inadéquation et la surqualification sont déjà présentes aujourd'hui, les projections OFS indiquent que le nombre de personnes diplômées du tertiaire va continuer d'augmenter dans les prochaines décennies. Cela rend d'autant plus urgente la question de l'adéquation entre formation et emploi.
+
+```{r ouverture-projection, echo=TRUE, fig.height=6}
+scenarios %>%
+  filter(niveau %in% c("Hautes écoles", "Form. prof. sup.")) %>%
+  group_by(scenario_label, annee) %>%
+  summarise(n_total = sum(n, na.rm = TRUE) / 1e6, .groups = "drop") %>%
+  ggplot(aes(x = annee, y = n_total, color = scenario_label,
+             group = scenario_label)) +
+  # Zone d'incertitude entre scénario bas et haut
+  {
+    df_wide <- scenarios %>%
+      filter(niveau %in% c("Hautes écoles", "Form. prof. sup.")) %>%
+      group_by(scenario_label, annee) %>%
+      summarise(n_total = sum(n, na.rm = TRUE) / 1e6, .groups = "drop") %>%
+      pivot_wider(names_from = scenario_label, values_from = n_total)
+    geom_ribbon(
+      data = df_wide,
+      aes(x = annee, ymin = Bas, ymax = Haut),
+      inherit.aes = FALSE,
+      # Zone d'incertitude allégée : alpha abaissé pour ne pas masquer les courbes
+      fill = COL_GREY, alpha = 0.10
+    )
+  } +
+  geom_line(linewidth = 1.4) +
+  geom_point(
+    data = . %>% filter(annee %in% c(2025, 2040, 2055)),
+    size = 3, shape = 21, fill = "white", stroke = 2
+  ) +
+  # Annotation : écart bas-haut en 2055
+  annotate(
+    "segment",
+    x = 2056, xend = 2056,
+    y = scenarios %>%
+          filter(niveau %in% c("Hautes écoles","Form. prof. sup."),
+                 scenario_label == "Bas", annee == 2055) %>%
+          summarise(s = sum(n)/1e6) %>% pull(s),
+    yend = scenarios %>%
+          filter(niveau %in% c("Hautes écoles","Form. prof. sup."),
+                 scenario_label == "Haut", annee == 2055) %>%
+          summarise(s = sum(n)/1e6) %>% pull(s),
+    arrow = arrow(ends = "both", length = unit(0.15, "cm"), type = "closed"),
+    color = COL_TEXT_LIGHT, linewidth = 0.7
+  ) +
+  scale_color_manual(values = pal_scen, name = "Scénario OFS") +
+  scale_y_continuous(labels = function(x) paste0(x, " M")) +
+  scale_x_continuous(breaks = seq(2025, 2055, 10)) +
+  labs(
+    title    = "Projections : population avec formation tertiaire (HE + prof. sup.) — 2025-2055",
+    subtitle = "Population résidante permanente de 25 à 64 ans, trois scénarios OFS",
+    x        = NULL,
+    y        = "Millions de personnes",
+    caption  = "Source : OFS — Scénarios pour le niveau de formation de la population 2025-2055."
+  ) +
+  theme_p() +
+  theme(legend.position = "top")
+```
+
+<div class="insight">
+<strong>Dans tous les scénarios, la Suisse comptera davantage de diplômés du tertiaire.</strong> L'écart entre scénario bas et haut en 2055 représente plusieurs centaines de milliers de personnes. La projection ne dit pas combien de postes adéquats existeront dans chaque secteur. Elle rappelle cependant que la hausse attendue du nombre de diplômés rendra la question de l'adéquation encore plus importante.
+</div>
+
+
+
+# Conclusion
+
+***
+
+Ce travail met en évidence une tension centrale : **la Suisse devient nettement plus diplômée, mais cette progression ne résout pas automatiquement les pénuries de main-d'œuvre qualifiée.**
+
+**Première partie — Une Suisse de plus en plus diplômée.** La carte cantonale montre d'abord que la montée du tertiaire s'inscrit dans l'espace suisse de manière progressive mais différenciée. L'effet générationnel est très marqué. Les jeunes cohortes arrivent sur le marché du travail avec un niveau de formation plus élevé que les cohortes plus âgées. Cette évolution peut être lue comme une réussite du système de formation, mais elle pose aussi la question des conditions d'accès aux études, notamment à travers le rôle des bourses.
+
+**Seconde partie — Des pénuries malgré la montée du tertiaire.** Les indicateurs du SECO montrent que les tensions de recrutement restent concentrées dans certains groupes de professions, notamment la santé, les TIC ou certains métiers spécialisés. Ces pénuries ne s'expliquent pas seulement par un manque global de diplômés, mais par une combinaison de facteurs : exigences de qualification, remplacement démographique, attractivité des métiers, postes vacants et disponibilité effective de travailleurs formés.
+
+**L'inadéquation formation-emploi apporte une nuance supplémentaire.** Certains domaines présentent peu d'inadéquation et correspondent à des secteurs en forte demande, tandis que d'autres affichent des taux plus élevés de surqualification. Cela montre que le problème n'est pas seulement de former davantage, mais de mieux articuler les parcours de formation, l'orientation, les conditions d'emploi et les besoins durables du marché du travail.
+
+La réponse à la problématique est donc nuancée : **la montée du tertiaire est une condition favorable, mais elle ne devient une réponse aux pénuries que si les compétences acquises trouvent une place effective dans les secteurs où les besoins sont les plus forts.** Dans un contexte où les projections annoncent une poursuite de la hausse du nombre de diplômés du tertiaire jusqu'en 2055, l'enjeu central n'est plus seulement la quantité de diplômes produits, mais leur adéquation avec les transformations du marché du travail.
+
+> *La montée du tertiaire est une condition favorable ; elle ne devient une réponse aux pénuries que si elle rencontre les besoins concrets du marché du travail.*
+
+***
+
+<div class="source">
+**Sources :** Office fédéral de la statistique (OFS) · SECO · fichiers disponibles sur opendata.swiss · **Cours de visualisation de données** · `r format(Sys.Date(), '%Y')`
+</div>
