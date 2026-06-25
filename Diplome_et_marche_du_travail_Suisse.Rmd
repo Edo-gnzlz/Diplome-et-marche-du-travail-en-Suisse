@@ -1052,7 +1052,8 @@ L'indice global agrège six indicateurs (chômage, postes vacants, immigration, 
 <strong>Limite de l'indice SECO.</strong> L'indice est un outil synthétique : il permet de comparer les professions entre elles, mais il ne dit pas quelle cause domine dans chaque cas ni comment la pénurie évoluera à court terme. Il doit être interprété avec les indicateurs composant l'indice, d'où l'intérêt du graphique radar suivant.
 </div>
 
-```{r graphe1-classement, echo=TRUE, fig.height=11}
+```{r graphe1-classement, echo=TRUE, fig.width=12, fig.height=11, out.width="100%"}
+
 # Palette de 4 niveaux
 df_top %>%
   mutate(profession = fct_reorder(profession, indice_global)) %>%
@@ -1078,10 +1079,8 @@ df_top %>%
   scale_x_continuous(limits = c(0, 10), breaks = 0:10, expand = expansion(mult = c(0, 0.08))) +
   labs(
     # Titre découpé manuellement pour garantir l'affichage complet sur toute largeur
-    title    = str_wrap(
-      "Indice global de disponibilité de la main-d'œuvre qualifiée par groupe de professions",
-      width = 75
-    ),
+    title    = "Indice global de disponibilité de la main-d'œuvre qualifiée\npar groupe de professions"
+    ,
     subtitle = "Plus l'indice est élevé, plus les signes de pénurie structurelle sont marqués",
     x        = "Indice global (0–10)",
     y        = NULL,
@@ -1089,9 +1088,12 @@ df_top %>%
   ) +
   theme_p() +
   theme(
-    legend.box  = "vertical",
-    axis.text.y = element_text(size = 9.5)
-  ) +
+  legend.box    = "vertical",
+  axis.text.y   = element_text(size = 9.5),
+  plot.title    = element_text(size = 15, lineheight = 1.12, margin = margin(b = 8)),
+  plot.subtitle = element_text(size = 11, margin = margin(b = 12)),
+  plot.margin   = margin(t = 14, r = 28, b = 12, l = 12)
+) +
   guides(
     fill = guide_legend(override.aes = list(size = 4), nrow = 2)
   )
