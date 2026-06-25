@@ -36,8 +36,8 @@ ggrepel
 1. Cloner le dépôt :
 
 ```bash
-git clone https://github.com/ton-utilisateur/education-suisse.git
-cd education-suisse
+https://github.com/Edo-gnzlz/Diplome-et-marche-du-travail-en-Suisse.git
+cd Diplome-et-marche-du-travail-en-Suisse
 ```
 
 2. Ouvrir le fichier `.Rmd` dans RStudio.
