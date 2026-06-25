@@ -8,30 +8,6 @@ Le projet cherche à comprendre comment le niveau de formation de la population 
 
 Il s’appuie notamment sur des données de l’OFS et du SECO.
 
-## Contenu du projet
-
-- Évolution cantonale de la formation tertiaire
-- Montée du tertiaire par région linguistique
-- Différences générationnelles selon l’âge
-- Comparaison entre bénéficiaires de bourses et effectifs étudiants
-- Indice de pénurie de main-d’œuvre qualifiée par groupe de professions
-- Inadéquation entre formation et emploi
-- Projection du niveau de formation de la population jusqu’en 2055
-
-## Structure recommandée
-
-```text
-education-suisse/
-├── Diplome_et_marche_du_travail2.Rmd
-├── data/
-│   ├── formation_tertiaire.csv
-│   ├── seco_indice_penurie_qualifiee_2023.csv
-│   ├── inadequation_TA3.csv
-│   └── autres fichiers de données OFS/SECO
-├── README.md
-└── .gitignore
-```
-
 ## Données
 
 Les fichiers de données doivent être placés dans le dossier `data/`.
