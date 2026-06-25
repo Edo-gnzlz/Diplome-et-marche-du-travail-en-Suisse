@@ -1160,6 +1160,15 @@ profs_ordered <- df_norm$profession
 
 par(mfrow = c(2, 3), mar = c(1, 1, 3, 1), oma = c(3, 0, 3, 0))
 
+labels_radar <- c(
+  "Chômage\n(inv.)",
+  "Postes\nvacants",
+  "Immigration",
+  "Croissance\nemploi",
+  "Rempl.\ndémog.",
+  "Qualification"
+)
+
 for (i in seq_along(profs_ordered)) {
   prof <- profs_ordered[i]
   vals <- df_norm %>% filter(profession == prof) %>%
@@ -1170,7 +1179,7 @@ for (i in seq_along(profs_ordered)) {
     rep(0,  6),   # min
     vals
   )
-  colnames(dat) <- colnames(df_norm)[-1]
+    colnames(dat) <- labels_radar
 
   radarchart(
     as.data.frame(dat),
